@@ -39,6 +39,14 @@ export class FriendsService {
         private readonly friendRequestRepository: Repository<FriendRequest>,
     ) {}
 
+    /**
+     *
+     * @param data
+     *
+     * id of the user who is performing find people and it will fetch requests sent by this user to other users.
+     * @param userId
+     * @returns
+     */
     async findPeople(
         data: FindPeopleDto,
         userId: string,
@@ -52,13 +60,22 @@ export class FriendsService {
         const searchTerm = `${data.search_term}%`; // match from beginning
         let users = await this.userRepository
             .createQueryBuilder("user")
-            .where("user.email = :email", { email: data.search_term })
-            .orWhere("user.first_name like :term", { term: searchTerm })
-            .orWhere("user.last_name like :term", { term: searchTerm })
-            .orWhere(
-                `CONCAT(user.first_name, " ", user.last_name) like :term`,
-                { term: searchTerm },
+            .where(
+                new Brackets((qb) => {
+                    qb.where("user.email = :email", { email: data.search_term })
+                        .orWhere("user.first_name like :term", {
+                            term: searchTerm,
+                        })
+                        .orWhere("user.last_name like :term", {
+                            term: searchTerm,
+                        })
+                        .orWhere(
+                            `CONCAT(user.first_name, " ", user.last_name) like :term`,
+                            { term: searchTerm },
+                        );
+                }),
             )
+            .andWhere("user.id != :userId", { userId }) // Exclude current user
             .skip(offset)
             .take(limit)
             .getMany();
@@ -411,7 +428,7 @@ export class FriendsService {
             );
         }
 
-        existingRequest.status = FriendStatus.Friend; 
+        existingRequest.status = FriendStatus.Friend;
         await this.friendRequestRepository.save(existingRequest);
 
         return { success: true };
