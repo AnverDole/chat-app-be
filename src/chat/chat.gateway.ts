@@ -11,6 +11,10 @@ import { Server } from "socket.io";
 import { AuthService } from "src/auth/auth.service";
 import { ChatService } from "./chat.service";
 import { AuthenticatedSocket } from "src/types/authenticated-socket";
+import { FriendsService } from "src/friends/friends.service";
+import { Repository } from "typeorm";
+import { User } from "src/entities/user.entity";
+import { InjectRepository } from "@nestjs/typeorm";
 
 @WebSocketGateway({
     cors: {
@@ -27,6 +31,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     constructor(
         private readonly authService: AuthService,
         private readonly chatService: ChatService,
+        private readonly friendsService: FriendsService,
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
     ) { }
 
     async handleConnection(client: AuthenticatedSocket) {
@@ -157,6 +164,29 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             receiverConnections?.forEach((connection) => {
                 connection.emit("on_message_seen_update_notification", message);
+            });
+        } catch (err) {
+            console.error("Socket message delivery error:", err);
+        }
+    }
+    @SubscribeMessage("send_friend_request_notification")
+    async handleOnFriendRequestSent(
+        @MessageBody() data: { friend_id: string },
+        @ConnectedSocket() client: AuthenticatedSocket,
+    ) {
+        try {
+            if (!data.friend_id) return;
+
+            const request = await this.friendsService.sendRequest(
+                client.data.user.id,
+                data.friend_id,
+            );
+
+            const receiverConnections = this.userSocketMap.get(data.friend_id);
+            receiverConnections?.forEach((connection) => {
+                connection.emit("on_friend_request_received_notification", {
+                    request,
+                });
             });
         } catch (err) {
             console.error("Socket message delivery error:", err);
